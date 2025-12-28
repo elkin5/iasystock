@@ -1,0 +1,47 @@
+spring:
+  application:
+    name: iasy-stock-api
+  main:
+    web-application-type: reactive
+  profiles:
+    active: dev
+
+server:
+  port: 8089
+
+# OpenAI Configuration - valores por defecto
+# IMPORTANTE: El API key SIEMPRE debe venir de variable de entorno
+openai:
+  api-key: ${OPENAI_API_KEY}
+  model: gpt-4o
+  embedding-model: text-embedding-3-small
+  max-tokens: 2000
+  temperature: 0.1
+
+# Configuración de reconocimiento de productos - valores por defecto
+product-recognition:
+  similarity-threshold: 0.8
+  max-image-size-mb: 10
+  supported-formats: jpg,jpeg,png,webp
+  quality-threshold: 0.6
+
+# Configuración de seguridad de MinIO - valores comunes
+minio:
+  security:
+    use-presigned-urls: true
+    default-expiry-hours: 24
+    max-expiry-hours: 168  # 7 días máximo
+    max-file-size-mb: 10
+    allowed-content-types:
+      - image/jpeg
+      - image/jpg
+      - image/png
+      - image/webp
+
+# Logging base - puede ser sobrescrito por perfiles
+logging:
+  level:
+    root: INFO
+    org.springframework: INFO
+    # Suprimir el error de DNS de Netty en macOS
+    io.netty.resolver.dns.DnsServerAddressStreamProviders: WARN

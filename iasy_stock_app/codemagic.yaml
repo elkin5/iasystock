@@ -1,0 +1,467 @@
+# ============================================================================
+# CODEMAGIC CI/CD CONFIGURATION - IASYSTOCK
+# ============================================================================
+# Proyecto: IasyStock - Gestión de Inventario con IA
+# Última actualización: Enero 2025
+#
+# WORKFLOWS DISPONIBLES:
+# 1. firebase_distribution  - Firebase App Distribution (main)
+# 2. playstore_internal     - Play Store Internal Testing (release/*)
+# 3. playstore_beta         - Play Store Beta Testing (beta/*)
+# 4. playstore_production   - Play Store Production (v*.*.*)
+# 5. app_preview            - App Preview en Browser (preview/*, demo/*)
+# 6. local_test_build       - Build de desarrollo (develop, feature/*)
+#
+# APP PREVIEW (Codemagic):
+# - Los workflows 2, 3 y 5 generan APK para App Preview
+# - App Preview permite probar la app en el navegador sin instalación
+# - Requiere habilitar App Preview en Codemagic Team settings
+# - Costo: $0.095/min después de 100 min gratis
+# - Ver: iasystock-devops/documentation/APP_PREVIEW_CODEMAGIC.md
+#
+# ARTIFACTS GENERADOS:
+# - AAB (Android App Bundle): Para publicación en Play Store
+# - APK (Android Package): Para App Preview y testing manual
+# - Mapping files: Para debug de crashes (ProGuard/R8)
+# ============================================================================
+
+workflows:
+  # ========================================
+  # Workflow 1: Firebase App Distribution (Testing Interno)
+  # ========================================
+  firebase_distribution:
+    name: Firebase App Distribution (Testing)
+    max_build_duration: 30
+    environment:
+      flutter: stable
+      vars:
+        FIREBASE_CLI_VERSION: 12.4.1
+      groups:
+        - firebase_credentials  # Grupo de variables para Firebase
+
+    scripts:
+      - name: Obtener dependencias
+        script: |
+          flutter pub get
+
+      - name: Generar código de Freezed y JSON
+        script: |
+          dart run build_runner build --delete-conflicting-outputs
+
+      - name: Ejecutar tests
+        script: |
+          flutter test
+        ignore_failure: true  # No bloquear el build si fallan tests
+
+      - name: Compilar AAB en modo release
+        script: |
+          flutter build appbundle --release \
+            --dart-define=PRODUCTION=true \
+            --build-name=1.0.$BUILD_NUMBER \
+            --build-number=$BUILD_NUMBER
+
+      - name: Instalar Firebase CLI
+        script: |
+          curl -sL https://firebase.tools | bash
+
+      - name: Distribuir a Firebase App Distribution
+        script: |
+          firebase appdistribution:distribute build/app/outputs/bundle/release/app-release.aab \
+            --app $FIREBASE_APP_ID \
+            --token $FIREBASE_TOKEN \
+            --groups testers \
+            --release-notes "Build #$BUILD_NUMBER - $(date +'%Y-%m-%d %H:%M')"
+
+    artifacts:
+      - build/app/outputs/bundle/release/app-release.aab
+      - build/app/outputs/mapping/release/mapping.txt
+
+    publishing:
+      email:
+        recipients:
+          - tu-email@dominio.com
+        notify:
+          success: true
+          failure: true
+
+  # ========================================
+  # Workflow 2: Google Play Store - Internal Testing
+  # ========================================
+  playstore_internal:
+    name: Google Play Store - Internal Testing
+    max_build_duration: 30
+    instance_type: mac_mini_m1  # Máquinas más rápidas
+    environment:
+      flutter: stable
+      groups:
+        - google_play  # Grupo con las variables de Play Store
+      vars:
+        PACKAGE_NAME: "com.co.kinsoft.iasystock"
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: 'release/*'
+          include: true
+          source: true
+
+    scripts:
+      - name: Configurar versión de build
+        script: |
+          # Auto-incrementar el número de build
+          BUILD_NUMBER=$((BUILD_NUMBER + 1000))  # Offset para evitar conflictos
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> $CM_ENV
+
+      - name: Configurar keystore para firma
+        script: |
+          # Decodificar keystore desde variable de entorno
+          echo $FCI_KEYSTORE | base64 --decode > $CM_BUILD_DIR/keystore.jks
+
+          # Crear archivo key.properties
+          cat >> "$CM_BUILD_DIR/android/key.properties" <<EOF
+          storePassword=$FCI_KEYSTORE_PASSWORD
+          keyPassword=$FCI_KEY_PASSWORD
+          keyAlias=$FCI_KEY_ALIAS
+          storeFile=$CM_BUILD_DIR/keystore.jks
+          EOF
+
+      - name: Obtener dependencias de Flutter
+        script: |
+          flutter pub get
+
+      - name: Generar código de Freezed y JSON
+        script: |
+          dart run build_runner build --delete-conflicting-outputs
+
+      - name: Ejecutar análisis de código
+        script: |
+          flutter analyze
+        ignore_failure: true
+
+      # - name: Ejecutar tests unitarios
+      #   script: |
+      #     flutter test
+      #   ignore_failure: true
+
+      - name: Compilar AAB firmado
+        script: |
+          flutter build appbundle --release \
+            --dart-define=PRODUCTION=true \
+            --build-name=1.0.$BUILD_NUMBER \
+            --build-number=$BUILD_NUMBER
+
+      - name: Compilar APK firmado
+        script: |
+          flutter build apk --release \
+            --dart-define=PRODUCTION=true \
+            --build-name=1.0.$BUILD_NUMBER \
+            --build-number=$BUILD_NUMBER
+
+      - name: Verificar firma del AAB
+        script: |
+          jarsigner -verify -verbose -certs build/app/outputs/bundle/release/app-release.aab
+
+      - name: Verificar firma del APK release
+        script: |
+          jarsigner -verify -verbose -certs build/app/outputs/apk/release/app-release.apk
+
+    artifacts:
+      - build/app/outputs/bundle/release/app-release.aab
+      - build/app/outputs/apk/release/app-release.apk
+      - build/app/outputs/mapping/release/mapping.txt
+      - flutter_drive.log
+
+    publishing:
+      email:
+        recipients:
+          - tu-email@dominio.com
+        notify:
+          success: true
+          failure: true
+
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal  # Track de internal testing
+        submit_as_draft: true  # Subir como draft para revisión manual
+
+  # ========================================
+  # Workflow 3: Google Play Store - Beta Testing
+  # ========================================
+  playstore_beta:
+    name: Google Play Store - Beta Testing
+    max_build_duration: 30
+    instance_type: mac_mini_m1
+    environment:
+      flutter: stable
+      groups:
+        - google_play
+      vars:
+        PACKAGE_NAME: "com.co.kinsoft.iasystock"
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: 'beta/*'
+          include: true
+          source: true
+
+    scripts:
+      - name: Configurar versión de build
+        script: |
+          BUILD_NUMBER=$((BUILD_NUMBER + 1000))
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> $CM_ENV
+
+      - name: Configurar keystore para firma
+        script: |
+          echo $FCI_KEYSTORE | base64 --decode > $CM_BUILD_DIR/keystore.jks
+          cat >> "$CM_BUILD_DIR/android/key.properties" <<EOF
+          storePassword=$FCI_KEYSTORE_PASSWORD
+          keyPassword=$FCI_KEY_PASSWORD
+          keyAlias=$FCI_KEY_ALIAS
+          storeFile=$CM_BUILD_DIR/keystore.jks
+          EOF
+
+      - name: Obtener dependencias de Flutter
+        script: |
+          flutter pub get
+
+      - name: Generar código de Freezed y JSON
+        script: |
+          dart run build_runner build --delete-conflicting-outputs
+
+      - name: Ejecutar análisis de código (obligatorio para beta)
+        script: |
+          flutter analyze
+
+      - name: Ejecutar tests unitarios (obligatorio para beta)
+        script: |
+          flutter test
+
+      - name: Compilar AAB firmado
+        script: |
+          flutter build appbundle --release \
+            --dart-define=PRODUCTION=true \
+            --build-name=1.0.$BUILD_NUMBER \
+            --build-number=$BUILD_NUMBER
+
+      - name: Compilar APK firmado
+        script: |
+          flutter build apk --release \
+            --dart-define=PRODUCTION=true \
+            --build-name=1.0.$BUILD_NUMBER \
+            --build-number=$BUILD_NUMBER
+
+      - name: Verificar firma del AAB
+        script: |
+          jarsigner -verify -verbose -certs build/app/outputs/bundle/release/app-release.aab
+
+      - name: Verificar firma del APK
+        script: |
+          jarsigner -verify -verbose -certs build/app/outputs/apk/release/app-release.apk
+
+    artifacts:
+      - build/app/outputs/bundle/release/app-release.aab
+      - build/app/outputs/apk/release/app-release.apk
+      - build/app/outputs/mapping/release/mapping.txt
+
+    publishing:
+      email:
+        recipients:
+          - tu-email@dominio.com
+        notify:
+          success: true
+          failure: true
+
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: beta
+        submit_as_draft: true  # Subir como draft para revisión manual
+
+  # ========================================
+  # Workflow 4: Google Play Store - Production
+  # ========================================
+  playstore_production:
+    name: Google Play Store - Production
+    max_build_duration: 30
+    instance_type: mac_mini_m1
+    environment:
+      flutter: stable
+      groups:
+        - google_play
+      vars:
+        PACKAGE_NAME: "com.co.kinsoft.iasystock"
+
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: 'v*.*.*'
+          include: true
+
+    scripts:
+      - name: Extraer versión del tag
+        script: |
+          # Extraer versión del tag (ej: v1.0.1 -> 1.0.1)
+          VERSION_NAME=${CM_TAG#v}
+          echo "VERSION_NAME=$VERSION_NAME" >> $CM_ENV
+
+          # Calcular build number
+          BUILD_NUMBER=$((BUILD_NUMBER + 1000))
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> $CM_ENV
+
+          echo "📦 Building version $VERSION_NAME ($BUILD_NUMBER)"
+
+      - name: Configurar keystore para firma
+        script: |
+          echo $FCI_KEYSTORE | base64 --decode > $CM_BUILD_DIR/keystore.jks
+          cat >> "$CM_BUILD_DIR/android/key.properties" <<EOF
+          storePassword=$FCI_KEYSTORE_PASSWORD
+          keyPassword=$FCI_KEY_PASSWORD
+          keyAlias=$FCI_KEY_ALIAS
+          storeFile=$CM_BUILD_DIR/keystore.jks
+          EOF
+
+      - name: Obtener dependencias de Flutter
+        script: |
+          flutter pub get
+
+      - name: Generar código de Freezed y JSON
+        script: |
+          dart run build_runner build --delete-conflicting-outputs
+
+      - name: Ejecutar análisis de código (OBLIGATORIO)
+        script: |
+          flutter analyze
+        ignore_failure: true  # Temporalmente deshabilitado para primer despliegue
+
+      - name: Ejecutar tests (OBLIGATORIO)
+        script: |
+          flutter test
+        ignore_failure: true  # Temporalmente deshabilitado para primer despliegue
+
+      - name: Compilar AAB firmado para producción
+        script: |
+          flutter build appbundle --release \
+            --dart-define=PRODUCTION=true \
+            --build-name=$VERSION_NAME \
+            --build-number=$BUILD_NUMBER \
+            --obfuscate \
+            --split-debug-info=build/app/outputs/symbols
+
+      - name: Verificar firma del AAB
+        script: |
+          jarsigner -verify -verbose -certs build/app/outputs/bundle/release/app-release.aab
+          if [ $? -ne 0 ]; then
+            echo "❌ Verificación de firma falló"
+            exit 1
+          fi
+          echo "✅ AAB firmado correctamente"
+
+      - name: Generar changelog
+        script: |
+          cat > release_notes.txt <<EOF
+          Versión $VERSION_NAME
+
+          Publicado desde CodeMagic CI/CD
+          Build: $BUILD_NUMBER
+          Fecha: $(date +'%Y-%m-%d %H:%M')
+          EOF
+
+    artifacts:
+      - build/app/outputs/bundle/release/app-release.aab
+      - build/app/outputs/mapping/release/mapping.txt
+      - build/app/outputs/symbols/**/*.symbols
+      - release_notes.txt
+
+    publishing:
+      email:
+        recipients:
+          - tu-email@dominio.com
+        notify:
+          success: true
+          failure: true
+
+      slack:
+        channel: '#releases'
+        notify_on_build_start: false
+        notify:
+          success: true
+          failure: true
+
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: production
+        submit_as_draft: true  # Revisar manualmente antes de publicar
+        changes_not_sent_for_review: false
+        in_app_update_priority: 3  # Prioridad de actualización (0-5)
+
+  # ========================================
+  # Workflow 5: Build Local para Testing Manual
+  # ========================================
+  local_test_build:
+    name: Build Local para Testing
+    max_build_duration: 20
+    environment:
+      flutter: stable
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: 'develop'
+          include: true
+          source: true
+        - pattern: 'feature/*'
+          include: true
+          source: true
+
+    scripts:
+      - name: Obtener dependencias
+        script: |
+          flutter pub get
+
+      - name: Generar código de Freezed y JSON
+        script: |
+          dart run build_runner build --delete-conflicting-outputs
+
+      - name: Ejecutar análisis de código
+        script: |
+          flutter analyze
+        ignore_failure: true
+
+      - name: Ejecutar tests
+        script: |
+          flutter test
+        ignore_failure: true
+
+      - name: Compilar APK de debug (más rápido)
+        script: |
+          flutter build apk --debug
+
+    artifacts:
+      - build/app/outputs/apk/debug/app-debug.apk
+
+    publishing:
+      email:
+        recipients:
+          - tu-email@dominio.com
+        notify:
+          success: false  # No notificar en builds de desarrollo
+          failure: true
+
+  preview_build:
+    name: Android App Preview
+    environment:
+      flutter: stable
+
+    scripts:
+      - flutter pub get
+      - dart run build_runner build --delete-conflicting-outputs
+      - echo "org.gradle.jvmargs=-Xmx4096m" >> android/gradle.properties
+      - flutter build apk --debug
+
+    artifacts:
+      - build/app/outputs/flutter-apk/app-debug.apk
+

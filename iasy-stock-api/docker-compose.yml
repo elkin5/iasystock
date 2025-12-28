@@ -1,0 +1,86 @@
+version: "3.9"
+
+# Docker Compose para Backend API en Coolify
+# IasyStock API - Spring Boot + Kotlin + WebFlux
+
+services:
+  iasystock-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    environment:
+      # Spring Profile
+      SPRING_PROFILES_ACTIVE: prod
+
+      # Database Connection (R2DBC)
+      SPRING_R2DBC_URL: ${SPRING_R2DBC_URL}
+      SPRING_R2DBC_USERNAME: ${SPRING_R2DBC_USERNAME}
+      SPRING_R2DBC_PASSWORD: ${SPRING_R2DBC_PASSWORD}
+
+      # Keycloak OAuth2
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: ${KEYCLOAK_ISSUER_URI}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${KEYCLOAK_JWK_SET_URI}
+
+      # MinIO S3
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET_PRODUCTS: ${MINIO_BUCKET_PRODUCTS:-product-images}
+
+      # OpenAI
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+
+      # Server Config
+      SERVER_PORT: 8089
+
+      # JVM Options
+      JAVA_OPTS: "-Xms512m -Xmx1024m"
+
+    ports:
+      - "8089:8089"
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8089/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    restart: unless-stopped
+
+    networks:
+      - iasystock-network
+
+    labels:
+      - "traefik.enable=true"
+
+      # Router HTTP → HTTPS redirect
+      - "traefik.http.routers.iasystock-api-http.rule=Host(`api.iasystock.lat`)"
+      - "traefik.http.routers.iasystock-api-http.entrypoints=http"
+      - "traefik.http.routers.iasystock-api-http.middlewares=iasystock-api-https-redirect"
+      - "traefik.http.middlewares.iasystock-api-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.iasystock-api-https-redirect.redirectscheme.permanent=true"
+
+      # Router HTTPS
+      - "traefik.http.routers.iasystock-api.rule=Host(`api.iasystock.lat`)"
+      - "traefik.http.routers.iasystock-api.entrypoints=https"
+      - "traefik.http.routers.iasystock-api.tls=true"
+      - "traefik.http.routers.iasystock-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.iasystock-api.service=iasystock-api"
+      - "traefik.http.services.iasystock-api.loadbalancer.server.port=8089"
+
+      # CORS Headers (para Flutter Web)
+      - "traefik.http.middlewares.iasystock-api-cors.headers.accesscontrolallowmethods=GET,POST,PUT,DELETE,PATCH,OPTIONS"
+      - "traefik.http.middlewares.iasystock-api-cors.headers.accesscontrolalloworiginlist=*"
+      - "traefik.http.middlewares.iasystock-api-cors.headers.accesscontrolallowheaders=*"
+      - "traefik.http.middlewares.iasystock-api-cors.headers.accesscontrolmaxage=100"
+      - "traefik.http.routers.iasystock-api.middlewares=iasystock-api-cors"
+
+networks:
+  iasystock-network:
+    external: true
+    name: iasystock-network
+

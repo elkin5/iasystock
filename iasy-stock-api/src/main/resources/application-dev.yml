@@ -1,0 +1,86 @@
+# ============================================
+# CONFIGURACIÓN DE DESARROLLO LOCAL
+# ============================================
+# Este perfil es para desarrollo en máquinas locales
+# Usa servicios Docker en localhost
+# Seguridad deshabilitada para facilitar pruebas
+
+spring:
+  r2dbc:
+    url: r2dbc:postgresql://localhost:5432/iasystock
+    username: admin
+    password: 123
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:9083/realms/iasy-stock
+
+# Configuración de MinIO local
+minio:
+  endpoint: http://localhost:9000
+  access-key: admin
+  secret-key: minio123456
+  region: us-east-1
+  api-base-url: http://10.0.2.2:8089
+  bucket:
+    product-images: product-images
+
+# Configuración de autenticación para desarrollo
+app:
+  auth:
+    keycloak-issuer: http://localhost:9083/realms/iasy-stock
+    jwk-set-uri: http://localhost:9083/realms/iasy-stock/protocol/openid-connect/certs
+    audience: iasy-stock-flutter-client
+    # Seguridad deshabilitada en desarrollo para facilitar pruebas
+    disable-security: false
+    allowed-redirect-uris:
+      - "com.iasystock.app://login-callback"
+      - "com.iasystock.app://logout-callback"
+      - "http://localhost:3000/*"
+      - "http://localhost:3000/auth/callback"
+      - "http://localhost:3000/login/callback"
+      - "http://localhost:3000/logout/callback"
+      - "http://127.0.0.1:3000/*"
+      - "http://10.0.2.2:3000/*"
+      - "http://localhost:8088/*"
+      - "http://localhost:8088/auth/callback"
+      - "http://localhost:8088/login"
+      - "http://localhost:8088/login-callback"
+    cors:
+      allowed-origins:
+        - "http://localhost:3000"
+        - "http://127.0.0.1:3000"
+        - "http://10.0.2.2:3000"
+        - "https://localhost:3000"
+        - "http://localhost:8088"
+        - "http://127.0.0.1:8088"
+        - "http://10.0.2.2:8088"
+        - "https://localhost:8088"
+      allowed-methods:
+        - "GET"
+        - "POST"
+        - "PUT"
+        - "DELETE"
+        - "OPTIONS"
+      allowed-headers:
+        - "*"
+      allow-credentials: true
+
+# Logging detallado para desarrollo
+logging:
+  level:
+    root: INFO
+#    org.springframework: DEBUG
+#    org.springframework.data.r2dbc: DEBUG
+#    org.springframework.r2dbc.core: DEBUG
+#    io.r2dbc.postgresql: DEBUG
+#    com.co.kinsoft.api.iasy_stock_api: DEBUG
+#    com.co.kinsoft.api.iasy_stock_api.domain.usecase.chat.service.com.co.kinsoft.api.iasy_stock_api.infraestructure.driven_adapters.openai.SimpleOpenAIService: DEBUG
+#    com.co.kinsoft.api.iasy_stock_api.infraestructure.entry_points.reactive_web.api.chat: DEBUG
+#    com.co.kinsoft.api.iasy_stock_api.infraestructure.driven_adapters.openai: DEBUG
+#    com.co.kinsoft.api.iasy_stock_api.infraestructure.driven_adapters.productrecognition: DEBUG
+    # Descomentar para debug de queries SQL
+    io.r2dbc.postgresql.QUERY: DEBUG
+    io.r2dbc.postgresql.PARAM: DEBUG
+    io.r2dbc.postgresql.QUERY_EXECUTOR: DEBUG

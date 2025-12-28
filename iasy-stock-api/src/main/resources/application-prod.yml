@@ -1,0 +1,109 @@
+# ============================================
+# CONFIGURACIÓN DE PRODUCCIÓN
+# ============================================
+# Este perfil es para el ambiente de producción
+# TODAS las credenciales DEBEN venir de variables de entorno
+# Seguridad SIEMPRE habilitada
+# Logging en nivel INFO/WARN
+
+spring:
+  r2dbc:
+    url: r2dbc:postgresql://${DB_HOST:postgres}:${DB_PORT:5432}/${DB_NAME:iasystock}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    pool:
+      initial-size: 5
+      max-size: 20
+      max-idle-time: 30m
+      validation-query: SELECT 1
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI}
+
+# Configuración de MinIO para producción
+minio:
+  endpoint: ${MINIO_ENDPOINT}
+  access-key: ${MINIO_ACCESS_KEY}
+  secret-key: ${MINIO_SECRET_KEY}
+  region: ${MINIO_REGION:-us-east-1}
+  api-base-url: ${API_BASE_URL}
+  bucket:
+    product-images: ${MINIO_BUCKET_PRODUCT_IMAGES:-product-images}
+
+# Configuración de autenticación para producción
+app:
+  auth:
+    keycloak-issuer: ${KEYCLOAK_ISSUER_URI}
+    jwk-set-uri: ${KEYCLOAK_JWK_SET_URI}
+    audience: ${KEYCLOAK_AUDIENCE:-iasy-stock-flutter-client}
+    # Seguridad SIEMPRE habilitada en producción
+    disable-security: false
+    allowed-redirect-uris:
+      - "com.iasystock.app://login-callback"
+      - "com.iasystock.app://logout-callback"
+      - "https://app.iasystock.lat/*"
+      - "https://app.iasystock.lat/auth/callback"
+      - "https://app.iasystock.lat/login/callback"
+      - "https://app.iasystock.lat/logout/callback"
+      - "https://iasystock.lat/*"
+      - "https://iasystock.lat/auth/callback"
+      - "https://iasystock.lat/login/callback"
+      - "https://iasystock.lat/logout/callback"
+    cors:
+      allowed-origins:
+        - "https://app.iasystock.lat"
+        - "https://iasystock.lat"
+      allowed-methods:
+        - "GET"
+        - "POST"
+        - "PUT"
+        - "DELETE"
+        - "OPTIONS"
+        - "PATCH"
+      allowed-headers:
+        - "*"
+      allow-credentials: true
+      max-age: 3600
+
+# Configuración de Spring Boot Actuator para health checks
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  server:
+    port: ${MANAGEMENT_PORT:8089}
+
+# Logging para producción - solo INFO y errores
+logging:
+  level:
+    root: INFO
+    org.springframework: INFO
+    org.springframework.r2dbc: WARN
+    io.r2dbc.postgresql: WARN
+    com.co.kinsoft.api.iasy_stock_api: INFO
+    # Suprimir warnings de Netty DNS
+    io.netty.resolver.dns.DnsServerAddressStreamProviders: ERROR
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: ${LOG_FILE_PATH:/var/log/iasystock/application.log}
+    max-size: 10MB
+    max-history: 30

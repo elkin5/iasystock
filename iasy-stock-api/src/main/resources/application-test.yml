@@ -1,0 +1,23 @@
+# ============================================
+# CONFIGURACIÓN DE TESTS
+# ============================================
+# Este perfil es para tests unitarios e integración
+# Usa configuraciones mockeadas/simplificadas
+# NO consume servicios externos reales (evita costos de APIs)
+
+# OpenAI Configuration para tests - valores mock
+openai:
+  api-key: test-key-mock
+  model: gpt-3.5-turbo
+  embedding-model: text-embedding-3-small
+  max-tokens: 100
+  temperature: 0.7
+
+# Logging mínimo para tests
+logging:
+  level:
+    root: WARN
+    org.springframework: WARN
+    com.co.kinsoft.api.iasy_stock_api: INFO
+    com.co.kinsoft.api.iasy_stock_api.domain.usecase.chat.service.com.co.kinsoft.api.iasy_stock_api.infraestructure.driven_adapters.openai.SimpleOpenAIService: DEBUG
+    com.co.kinsoft.api.iasy_stock_api.infraestructure.entry_points.reactive_web.api.chat: DEBUG

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <include resource="org/springframework/boot/logging/logback/defaults.xml" />
+
+    <!-- Definición de patrones y propiedades -->
+    <property name="LOG_FILE_PATH" value="logs" />
+    <property name="APP_NAME" value="iasy-stock" />
+
+    <!-- Appender para consola (formato JSON) -->
+    <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+            <providers>
+                <timestamp>
+                    <timeZone>UTC</timeZone>
+                </timestamp>
+                <pattern>
+                    <pattern>
+                        {
+                        "timestamp": "%date{ISO8601}",
+                        "level": "%level",
+                        "app": "${APP_NAME}",
+                        "requestId": "%X{requestId}",
+                        "logger": "%logger",
+                        "thread": "%thread",
+                        "message": "%message",
+                        "context": "%mdc"
+                        }
+                    </pattern>
+                </pattern>
+                <stackTrace />
+            </providers>
+        </encoder>
+    </appender>
+
+    <!-- Appender para archivo (formato JSON para Promtail o Filebeat) -->
+<!--    <appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">-->
+<!--        <file>${LOG_FILE_PATH}/application.log</file>-->
+<!--        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">-->
+<!--            <fileNamePattern>${LOG_FILE_PATH}/application-%d{yyyy-MM-dd}.log</fileNamePattern>-->
+<!--            <maxHistory>7</maxHistory>-->
+<!--        </rollingPolicy>-->
+<!--        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">-->
+<!--            <providers>-->
+<!--                <timestamp />-->
+<!--                <loggerName />-->
+<!--                <threadName />-->
+<!--                <logLevel />-->
+<!--                <message />-->
+<!--                <arguments />-->
+<!--                <stackTrace />-->
+<!--                <mdc />-->
+<!--            </providers>-->
+<!--        </encoder>-->
+<!--    </appender>-->
+
+    <!-- Logger raíz -->
+    <root level="INFO">
+        <appender-ref ref="JSON_CONSOLE" />
+<!--        <appender-ref ref="JSON_FILE" />-->
+    </root>
+
+</configuration>
